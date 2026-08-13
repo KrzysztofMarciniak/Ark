@@ -19,6 +19,36 @@ directory (e.g. `~/.ark/`), with no writes outside it and no root/setuid
 requirement. Multiple users on the same machine each get an entirely
 independent Ark install.
 
+## Network access
+
+Ark prompts for outbound network access **once per invocation**, not once
+per file or request within it. Whether a command triggers the prompt
+depends on whether it can be satisfied entirely from the local store:
+
+```
+ark will make outbound access [y/N]
+```
+
+| Command | Needs network? | Prompts? |
+|---|---|---|
+| `ark install <pkg>` — pkg + full dep closure already in store | No | No |
+| `ark install <pkg>` — pkg or a dep missing from store | Yes | Yes, once |
+| `ark upgrade` | Yes (checks for newer versions) | Yes, once |
+| `ark source update` | Yes | Yes, once |
+| `ark source add` | Yes (fetches index) | Yes, once, plus shows the URL for review since adding a source is a trust decision |
+| `ark search`, `ark info`, `ark remove`, `ark source list` | No | No |
+
+Notes:
+
+- `-y` / `--yes` skips the prompt (for scripts, cron, provisioning). All the
+  commands above accept it.
+- Answering `N` aborts the transaction rather than partially applying it —
+  `ark upgrade` run this way does nothing, it does not silently fall back to
+  an offline-only partial upgrade.
+- `ark install` of a package not yet in the store follows the same
+  single-prompt rule as `ark upgrade`; it's called out separately here since
+  it's easy to assume `install` is always offline.
+
 ## Concepts
 
 - **Source** — a named, priority-ordered origin of packages (remote URL or
