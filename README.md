@@ -106,6 +106,23 @@ in the lockfile and fails rather than silently re-resolving if that's not
 possible offline. `ark upgrade --no-lock` is the explicit escape hatch for
 moving off a locked state.
 
+## Target
+
+Ark is being built as the package manager for
+[Simple-Linux](https://github.com/KrzysztofMarciniak/Simple-Linux), a Linux
+distribution using uClibc-ng, BusyBox, and LLVM Clang. This shapes a few
+design points:
+
+- Package manifests record the libc and architecture a binary was built
+  against, so `ark install` can refuse or warn on an ABI mismatch (e.g. a
+  glibc binary on a uClibc-ng system) instead of installing something that
+  fails at runtime.
+- `ark-build` recipes are C programs, compiled with Clang at build time (not
+  shell scripts), so there's no dependency on GNU coreutils/bash semantics
+  that BusyBox's userland doesn't provide.
+- Binaries produced this way are keyed to the Simple-Linux target and are
+  not expected to be portable to other distros.
+
 ## `ark-build` (to be added)
 
 ```sh
@@ -117,9 +134,10 @@ ark-build all
 ark-build clean
 ```
 
-`ark-build` writes its output into `~/.ark/store/local/` using the same
-package manifest format (name, version, deps, archive hash, source/binary
-flag) that remote sources use. That directory is registered as an ordinary
+Recipes are C source, compiled with Clang at the time they're needed rather
+than interpreted. `ark-build` writes its output into `~/.ark/store/local/`
+using the same package manifest format (name, version, deps, archive hash,
+source/binary flag, libc + arch tag) that remote sources use. That directory is registered as an ordinary
 source:
 
 ```sh
