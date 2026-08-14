@@ -1,149 +1,327 @@
 # Ark
 
-An offline-ready, minimal package manager written in C.
+An **offline-ready**, minimal package manager written in C for [Simple-Linux](https://github.com/KrzysztofMarciniak/Simple-Linux).
 
-## Goals
+## What "offline-ready" means
 
-Ark treats a package source as a self-contained software archive rather than
-merely a remote repository. Once a source is added, Ark downloads and stores
-the metadata, source archives, and/or binary packages required to operate
-from that source without network access — including the full transitive
-dependency closure, not just top-level packages, so resolution and
-installation never need to reach the network.
+Ark is designed to work **without network access** after an initial setup phase:
 
-## Scope
+1. **Setup phase (online):** Clone recipes repo, run `ark fetch` once
+   - Download all source archives to local disk
+   - Verify checksums
+   - Cache sources in `~/.ark/sources/`
 
-Ark is user-installed only — there is no system-wide mode. All state (store,
-sources, lockfiles, installed packages) lives under the invoking user's home
-directory (e.g. `~/.ark/`), with no writes outside it and no root/setuid
-requirement. Multiple users on the same machine each get an entirely
-independent Ark install.
+2. **Work phase (offline):** Install, remove, upgrade packages entirely locally
+   - No network requests during `ark install` or `ark remove`
+   - All sources and metadata already on disk
+   - Works on air-gapped machines, poor connectivity, or by design choice
 
-## Network access
+**Difference from traditional package managers:**
+- `apt`, `pacman`, `yum`: make network requests during install (online-first)
+- Ark: make one network request upfront via `fetch`, then work offline (offline-first)
 
-Ark prompts for outbound network access **once per invocation**, not once
-per file or request within it. Whether a command triggers the prompt
-depends on whether it can be satisfied entirely from the local store:
+This makes Ark suitable for:
+- Embedded systems with expensive/unreliable connectivity
+- Air-gapped deployments
+- Build systems that need reproducible, deterministic package acquisition
+- Distributing Simple-Linux across isolated machines
 
-```
-ark will make outbound access [y/N]
-```
+## Quick start
 
-| Command | Needs network? | Prompts? |
-|---|---|---|
-| `ark install <pkg>` — pkg + full dep closure already in store | No | No |
-| `ark install <pkg>` — pkg or a dep missing from store | Yes | Yes, once |
-| `ark upgrade` | Yes (checks for newer versions) | Yes, once |
-| `ark source update` | Yes | Yes, once |
-| `ark source add` | Yes (fetches index) | Yes, once, plus shows the URL for review since adding a source is a trust decision |
-| `ark search`, `ark info`, `ark remove`, `ark source list` | No | No |
+```bash
+# One-time setup (requires network)
+mkdir -p ~/.ark/recipes
+git clone https://github.com/KrzysztofMarciniak/ark-recipes.git ~/.ark/recipes/ark-recipes
 
-Notes:
+# Download all sources once (requires network)
+ark fetch
 
-- `-y` / `--yes` skips the prompt (for scripts, cron, provisioning). All the
-  commands above accept it.
-- Answering `N` aborts the transaction rather than partially applying it —
-  `ark upgrade` run this way does nothing, it does not silently fall back to
-  an offline-only partial upgrade.
-- `ark install` of a package not yet in the store follows the same
-  single-prompt rule as `ark upgrade`; it's called out separately here since
-  it's easy to assume `install` is always offline.
-
-## Concepts
-
-- **Source** — a named, priority-ordered origin of packages (remote URL or
-  local build output). Each source, once added and updated, holds a complete
-  local copy of its metadata and dependency graph.
-- **Store** — the local package cache under `~/.ark/store/`, shared between
-  sources and `ark-build` output.
-- **Lockfile** (`ark.lock`) — records the exact resolved version, source, and
-  content hash for each installed package, so installs are reproducible
-  across machines.
-
-## `ark`
-
-```sh
-ark source add <name> <url> [--priority N]
-ark source remove <name>
-ark source update [name]
-ark source verify [name]
-ark source list
-
-ark install <package>[@source] [--source <name>] [--locked]
-ark remove <package>
-ark update              # recompute available upgrades against local source data; writes a plan
-ark upgrade [--no-lock] # execute the update plan, fetching only what's missing locally
-ark search <query>
-ark info <package>
-ark help
-ark version
+# Now work offline, as much as you want
+ark install busybox
+ark install make
+ark remove make
 ```
 
-### Command semantics
+## Build Ark
 
-Three verbs look similar but act on different things:
-
-| Command | Acts on | Effect |
-|---|---|---|
-| `ark source update [name]` | source metadata | Refreshes the index, full dependency graph, and archive/binary cache for that source. Installed packages are untouched. |
-| `ark update` | installed package records | Recomputes what upgrades are available given current source metadata and writes a resolved plan. Fetches and installs nothing. |
-| `ark upgrade` | installed packages | Executes the plan from `ark update` (computing one first if none is cached), fetching only what the offline source cache doesn't already have. |
-
-Pipeline: `ark source update` → `ark update` → `ark upgrade`.
-
-### Source priority and conflicts
-
-Sources are priority-ordered (`--priority`, shown by `ark source list`). When
-multiple sources provide the same package, the highest-priority source wins
-by default. Use `<package>@<source>` or `--source <name>` on `ark install` to
-override this per-install without changing global policy.
-
-### Lockfile
-
-`ark install` writes/updates `ark.lock` with the resolved version, source,
-and hash for each package. `ark install --locked` reproduces exactly what's
-in the lockfile and fails rather than silently re-resolving if that's not
-possible offline. `ark upgrade --no-lock` is the explicit escape hatch for
-moving off a locked state.
-
-## Target
-
-Ark is being built as the package manager for
-[Simple-Linux](https://github.com/KrzysztofMarciniak/Simple-Linux), a Linux
-distribution using uClibc-ng, BusyBox, and LLVM Clang. This shapes a few
-design points:
-
-- Package manifests record the libc and architecture a binary was built
-  against, so `ark install` can refuse or warn on an ABI mismatch (e.g. a
-  glibc binary on a uClibc-ng system) instead of installing something that
-  fails at runtime.
-- `ark-build` recipes are C programs, compiled with Clang at build time (not
-  shell scripts), so there's no dependency on GNU coreutils/bash semantics
-  that BusyBox's userland doesn't provide.
-- Binaries produced this way are keyed to the Simple-Linux target and are
-  not expected to be portable to other distros.
-
-## `ark-build` (to be added)
-
-```sh
-ark-build <recipe>
-ark-build --clean <recipe>
-ark-build --source <recipe>
-ark-build --binary <recipe>
-ark-build all
-ark-build clean
+```bash
+./build.sh
 ```
 
-Recipes are C source, compiled with Clang at the time they're needed rather
-than interpreted. `ark-build` writes its output into `~/.ark/store/local/`
-using the same package manifest format (name, version, deps, archive hash,
-source/binary flag, libc + arch tag) that remote sources use. That directory is registered as an ordinary
-source:
+Compiles `build/ark` — the main binary.
 
-```sh
-ark source add local file:///~/.ark/store/local --priority <highest>
+**Requirements:**
+- C compiler (default: `cc`, override with `CC` env var)
+- POSIX-compatible system
+- `tar`, `rm`, `/bin/sh` (used by build and remove scripts)
+
+## User setup
+
+Users must initialize Ark before first use:
+
+```bash
+# Create the Ark directory structure
+mkdir -p ~/.ark/recipes
+
+# Clone recipes repository
+git clone https://github.com/KrzysztofMarciniak/ark-recipes.git ~/.ark/recipes/ark-recipes
+
+# Download all package sources to local disk (one-time, requires network)
+ark fetch
+
+# Done. Now install packages as needed, no more network access required.
+ark install bash
+ark install gcc
 ```
 
-so `ark install` never distinguishes a locally built package from a
-remotely fetched one — it's just another entry in the priority-ordered
-source list.
+### What `ark fetch` does
+
+Scans `~/.ark/recipes/` for all recipes, downloads each source to `~/.ark/sources/`, verifies checksums, and caches locally.
+
+```
+Process per recipe:
+  1. Download source archive (curl)
+  2. Verify SHA-256 checksum (sha256sum)
+  3. Extract and repackage as sources.tar.xz
+  4. Store in ~/.ark/sources/<package>/<version>/sources.tar.xz
+```
+
+After `ark fetch` completes, all sources are ready. **Network is no longer required.**
+
+## Commands
+
+### `ark install <package> [package...]`
+
+Build and install one or more packages.
+
+**Process:**
+1. Find recipe in `~/.ark/recipes/`
+2. Check for source tarball in `~/.ark/sources/<name>/<version>/sources.tar.xz`
+3. If missing, fail with "source not fetched" message (run `ark fetch` first)
+4. Extract source to temporary directory
+5. Source the recipe and run its `build()` function
+6. Clean up temporary directory
+
+**Environment variables available in build script:**
+- `ARK_SOURCE_ARCHIVE` — path to sources.tar.xz
+- `ARK_BUILD_DIR` — temporary build directory
+- `ARK_PACKAGE_NAME`, `ARK_PACKAGE_VERSION`
+- `ARK_SOURCE_DIR` — path to extracted sources (set by wrapper)
+
+**Example:**
+```bash
+ark install curl@7.85.0
+ark install openssl busybox  # Multiple packages
+```
+
+### `ark remove <package>`
+
+Uninstall a package.
+
+**Process:**
+1. Find recipe in `~/.ark/recipes/`
+2. Source recipe and call its `remove()` function
+3. Recipe is responsible for what files to delete
+
+**Example:**
+```bash
+ark remove curl
+```
+
+## Architecture
+
+### Command registration (linker sections)
+
+Commands are defined via `ARK_COMMAND()` macros, which place command definitions into the `ark_commands` linker section. At startup, the registry reads from `__start_ark_commands` to `__stop_ark_commands` to discover all commands automatically.
+
+**Startup sequence:**
+1. `main()` checks prerequisites (`.ark` dir exists, recipes dir exists, required programs available)
+2. `ark_command_registry_init()` populates registry from linker section
+3. `ark_command_logic_execute()` routes to appropriate handler based on CLI args
+4. Handler executes and returns status
+5. Registry freed on exit
+
+### Directory layout
+
+```
+src/
+├── command_logic/       # Command registry, routing, help
+├── source/              # Archive type detection
+├── ark/                 # Main binary
+│   ├── main.c
+│   ├── commands/
+│   │   ├── version/     # Show version
+│   │   ├── fetch/       # Download all sources
+│   │   ├── install/     # Build and install
+│   │   └── remove/      # Uninstall
+│   ├── package_handling/  # Recipe search, package spec parsing
+│   └── prerequisite/    # Startup validation
+```
+
+## Recipes
+
+Recipes live in the [ark-recipes](https://github.com/KrzysztofMarciniak/ark-recipes) repository:
+
+```
+~/.ark/recipes/ark-recipes/<package>/<version>/recipe.sh
+```
+
+### Recipe format
+
+A recipe is a shell script that defines two functions:
+
+#### `build()`
+Called by `ark install`. Has access to:
+- `$ARK_SOURCE_DIR` — extracted source directory (already set up)
+- `$ARK_BUILD_DIR` — temporary work directory
+- `$ARK_PACKAGE_NAME`, `$ARK_PACKAGE_VERSION`
+- Standard shell commands
+
+```bash
+build() {
+    cd "$ARK_SOURCE_DIR"
+    ./configure --prefix=$HOME/.local
+    make
+    make install
+}
+```
+
+#### `remove()`
+Called by `ark remove`. Must clean up installed files.
+
+```bash
+remove() {
+    rm -f $HOME/.local/bin/myprogram
+    rm -f $HOME/.local/lib/libmylib.so
+}
+```
+
+### Full example recipe
+
+File: `~/.ark/recipes/ark-recipes/curl/7.85.0/recipe.sh`
+
+```bash
+build() {
+    cd "$ARK_SOURCE_DIR"
+    ./configure --prefix=$HOME/.local
+    make
+    make install
+}
+
+remove() {
+    rm -f $HOME/.local/bin/curl
+    rm -f $HOME/.local/lib/libcurl*
+    rm -rf $HOME/.local/share/man/man1/curl*
+}
+```
+
+## Package storage
+
+### Sources structure
+
+Sources are cached in:
+```
+~/.ark/sources/<package>/<version>/sources.tar.xz
+```
+
+`ark fetch` downloads and verifies these. `ark install` extracts them as needed.
+
+### Package spec syntax
+
+Packages are specified as:
+- `name` — uses first version found
+- `name@version` — requires exact version
+
+Example:
+```bash
+ark install bash
+ark install gcc@11.2.0
+```
+
+## Adding a new recipe
+
+1. Clone or create a directory under `~/.ark/recipes/ark-recipes/`
+2. Create: `~/.ark/recipes/ark-recipes/<package>/<version>/recipe.sh`
+3. Define `build()` and `remove()` functions
+4. Run `ark fetch` to download the source
+5. Test with `ark install <package>@<version>`
+
+## Adding a new command to Ark
+
+1. Create `src/ark/commands/<name>/<name>.c`
+2. Implement the handler function:
+   ```c
+   int ark_command_foo(int argc, char **argv) {
+       // implementation
+       return 0;  // 0 = success, 1 = failure
+   }
+   ```
+3. Register it at the end of the file:
+   ```c
+   ARK_COMMAND(
+       "foo",
+       "ark foo [args]",
+       "Short description",
+       ark_command_foo
+   );
+   ```
+4. Add the .c file to the compile command in `build.sh`
+5. Run `./build.sh`
+
+The command will be auto-discovered at runtime.
+
+## Data structures
+
+```c
+struct ark_package {
+    char name[256];
+    char version[256];
+    char recipe_path[4096];
+};
+
+struct ark_command_definition {
+    const char *name;        // "install", "remove", etc.
+    const char *parent;      // NULL for top-level commands
+    const char *usage;       // "ark install <package>"
+    const char *description; // "Build and install packages"
+    ark_command_handler handler;  // Function pointer
+};
+```
+
+## Known limitations & future work
+
+- **No dependency resolution** — each recipe is standalone; transitive deps must be manually installed
+- **No lockfiles** — no reproducible installs across machines (planned per original README)
+- **No subcommands yet** — `source add/remove/list/update` are planned but not implemented
+- **No conflict detection** — multiple versions can be "installed" (recipes control install location)
+- **Shell-based recipes** — recipes are shell scripts, not compiled (future: C-based recipes per original goals)
+
+## Testing
+
+Manual testing workflow:
+
+```bash
+# Build
+./build.sh
+
+# Setup (one time)
+mkdir -p ~/.ark/recipes
+git clone https://github.com/KrzysztofMarciniak/ark-recipes.git ~/.ark/recipes/ark-recipes
+
+# Fetch sources
+./build/ark fetch
+
+# Install a package
+./build/ark install busybox
+
+# Remove it
+./build/ark remove busybox
+```
+
+## Design principles
+
+- **Minimal dependencies** — only uses POSIX + tar, no external package libraries
+- **User-scoped only** — no system-wide installation, no root required
+- **Offline-first** — network access is upfront in `fetch`, not per-install
+- **Self-contained sources** — one `ark fetch` downloads everything needed
+- **Reproducible** — same sources, same recipes, same output (lockfiles planned)
