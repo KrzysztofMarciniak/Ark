@@ -21,7 +21,7 @@ struct ark_command_registry {
 #define ARK_COMMAND(name, usage, description, handler)                 \
     static const struct ark_command_definition                         \
     ark_command_definition_##handler                                   \
-    __attribute__((used, section("ark_commands"))) = {                 \
+    __attribute__((used, section("ark_commands"), aligned(8))) = {    \
         name,                                                           \
         NULL,                                                           \
         usage,                                                          \
@@ -32,10 +32,10 @@ struct ark_command_registry {
 #define ARK_SUBCOMMAND(parent, name, usage, description, handler)      \
     static const struct ark_command_definition                         \
     ark_subcommand_definition_##handler                                \
-    __attribute__((used, section("ark_commands"))) = {                 \
+    __attribute__((used, section("ark_commands"), aligned(8))) = {    \
         name,                                                           \
         parent,                                                         \
-        usage,                                                          \
+        usage,                                                           \
         description,                                                    \
         handler                                                          \
     }

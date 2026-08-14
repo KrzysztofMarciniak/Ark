@@ -13,15 +13,24 @@ mkdir -p "$BUILD"
 echo "==> Building ark"
 
 "$CC" $CFLAGS \
+    -I"$ROOT/src" \
     "$ROOT/src/hashmap/hashmap.c" \
     "$ROOT/src/command_logic/command_logic.c" \
+    "$ROOT/src/ark/prerequisite/ark_exists.c" \
+    "$ROOT/src/ark/prerequisite/recipes_exists.c" \
+    "$ROOT/src/ark/prerequisite/programs_required.c" \
+    "$ROOT/src/ark/package_handling/package_handling.c" \
     "$ROOT/src/ark/commands/version/version.c" \
+    "$ROOT/src/ark/commands/fetch/fetch.c" \
+    "$ROOT/src/ark/commands/install/install.c" \
+    "$ROOT/src/ark/commands/remove/remove.c" \
     "$ROOT/src/ark/main.c" \
     -o "$BUILD/ark"
 
 echo "==> Building ark-build"
 
 "$CC" $CFLAGS \
+    -I"$ROOT/src" \
     "$ROOT/src/hashmap/hashmap.c" \
     "$ROOT/src/ark-build/main.c" \
     -o "$BUILD/ark-build"
