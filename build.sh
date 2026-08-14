@@ -14,6 +14,8 @@ echo "==> Building ark"
 
 "$CC" $CFLAGS \
     "$ROOT/src/hashmap/hashmap.c" \
+    "$ROOT/src/command_logic/command_logic.c" \
+    "$ROOT/src/ark/commands/version/version.c" \
     "$ROOT/src/ark/main.c" \
     -o "$BUILD/ark"
 
