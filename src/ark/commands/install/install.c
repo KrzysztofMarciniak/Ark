@@ -4,9 +4,9 @@
 #include "../../package_handling/package_handling.h"
 #include "command_logic/command_logic.h"
 
-#include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -127,10 +127,6 @@ build_package(
 
     fclose(file);
 
-    /*
-     * Execute through /bin/sh rather than executing the temporary
-     * script directly. This also works when /tmp is mounted noexec.
-     */
     argv[0] = "/bin/sh";
     argv[1] = script_path;
     argv[2] = (char *)package->recipe_path;
@@ -142,6 +138,11 @@ build_package(
 
     return result;
 }
+
+
+/* ------------------------------------------------------------------------- */
+/* Build directory                                                           */
+/* ------------------------------------------------------------------------- */
 
 static int
 remove_build_directory(const char *path)
@@ -175,8 +176,9 @@ remove_build_directory(const char *path)
     return WEXITSTATUS(status);
 }
 
+
 /* ------------------------------------------------------------------------- */
-/* Install                                                                   */
+/* Install                                                                    */
 /* ------------------------------------------------------------------------- */
 
 static int
@@ -198,7 +200,11 @@ install_package(
             package->name,
             package->version
         ) >= (int)sizeof(source_archive)) {
-        fprintf(stderr, "ark: source path too long\n");
+        fprintf(
+            stderr,
+            "ark: source path too long\n"
+        );
+
         return -1;
     }
 
@@ -264,13 +270,13 @@ install_package(
         return -1;
     }
 
-if (remove_build_directory(build_directory) != 0) {
-    fprintf(
-        stderr,
-        "ark: warning: could not remove build directory: %s\n",
-        build_directory
-    );
-}
+    if (remove_build_directory(build_directory) != 0) {
+        fprintf(
+            stderr,
+            "ark: warning: could not remove build directory: %s\n",
+            build_directory
+        );
+    }
 
     printf(
         "==> Installed %s-%s\n",
@@ -293,6 +299,8 @@ ark_command_install(int argc, char **argv)
     char recipes_root[ARK_PATH_MAX];
     char sources_root[ARK_PATH_MAX];
     struct ark_package package;
+    int i;
+    int failed;
 
     if (argc < 1) {
         fprintf(
@@ -342,46 +350,53 @@ ark_command_install(int argc, char **argv)
         return 1;
     }
 
-    memset(&package, 0, sizeof(package));
+    failed = 0;
 
-    printf(
-        "==> Searching recipes for %s\n",
-        argv[0]
-    );
+    for (i = 0; i < argc; i++) {
+        memset(&package, 0, sizeof(package));
 
-    if (ark_find_package(
-            recipes_root,
-            argv[0],
-            &package
-        ) != 0) {
-        fprintf(
-            stderr,
-            "ark: package not found: %s\n",
-            argv[0]
+        printf(
+            "==> Searching recipes for %s\n",
+            argv[i]
         );
 
-        return 1;
+        if (ark_find_package(
+                recipes_root,
+                argv[i],
+                &package
+            ) != 0) {
+            fprintf(
+                stderr,
+                "ark: package not found: %s\n",
+                argv[i]
+            );
+
+            failed = 1;
+            continue;
+        }
+
+        printf(
+            "    found: %s/%s\n",
+            package.name,
+            package.version
+        );
+
+        if (install_package(
+                &package,
+                sources_root
+            ) != 0) {
+            failed = 1;
+            continue;
+        }
     }
 
-    printf(
-        "    found: %s/%s\n",
-        package.name,
-        package.version
-    );
-
-    if (install_package(
-            &package,
-            sources_root
-        ) != 0)
-        return 1;
-
-    return 0;
+    return failed ? 1 : 0;
 }
 
 
 ARK_COMMAND(
     "install",
-    "ark install <package>",
-    "Build and install a package",
+    "ark install <package> [package...]",
+    "Build and install packages",
     ark_command_install
 );

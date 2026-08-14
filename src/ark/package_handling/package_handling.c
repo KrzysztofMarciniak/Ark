@@ -31,19 +31,85 @@ ark_is_regular_file(const char *path)
 
 
 /* ------------------------------------------------------------------------- */
+/* Package specification                                                     */
+/* ------------------------------------------------------------------------- */
+
+static int
+parse_package_spec(
+    const char *spec,
+    char *name,
+    size_t name_size,
+    char *version,
+    size_t version_size
+)
+{
+    const char *separator;
+    size_t name_length;
+    size_t version_length;
+
+    separator = strchr(spec, '@');
+
+    if (separator == NULL) {
+        name_length = strlen(spec);
+
+        if (name_length == 0 ||
+            name_length >= name_size)
+            return -1;
+
+        memcpy(name, spec, name_length + 1);
+
+        version[0] = '\0';
+
+        return 0;
+    }
+
+    name_length = (size_t)(separator - spec);
+    version_length = strlen(separator + 1);
+
+    if (name_length == 0 ||
+        name_length >= name_size ||
+        version_length == 0 ||
+        version_length >= version_size)
+        return -1;
+
+    memcpy(name, spec, name_length);
+    name[name_length] = '\0';
+
+    memcpy(
+        version,
+        separator + 1,
+        version_length + 1
+    );
+
+    return 0;
+}
+
+
+/* ------------------------------------------------------------------------- */
 /* Recipe discovery                                                          */
 /* ------------------------------------------------------------------------- */
 
 int
 ark_find_package(
     const char *recipes_root,
-    const char *package_name,
+    const char *package_spec,
     struct ark_package *package
 )
 {
     DIR *repos;
     struct dirent *repo_entry;
+    char package_name[ARK_PACKAGE_NAME_MAX];
+    char requested_version[ARK_PACKAGE_VERSION_MAX];
     char package_root[ARK_PATH_MAX];
+
+    if (parse_package_spec(
+            package_spec,
+            package_name,
+            sizeof(package_name),
+            requested_version,
+            sizeof(requested_version)
+        ) != 0)
+        return -1;
 
     repos = opendir(recipes_root);
 
@@ -87,6 +153,17 @@ ark_find_package(
                 continue;
 
             if (version_entry->d_name[0] == '.')
+                continue;
+
+            /*
+             * If a version was explicitly requested, skip
+             * every other version.
+             */
+            if (requested_version[0] != '\0' &&
+                strcmp(
+                    version_entry->d_name,
+                    requested_version
+                ) != 0)
                 continue;
 
             if (snprintf(
