@@ -2,6 +2,8 @@
 
 #include "install.h"
 #include "../../package_handling/package_handling.h"
+#include "../../dependency_handling/dependency_handling.h"
+#include "../../installed_handling/installed_handling.h"
 #include "command_logic/command_logic.h"
 
 #include <stdio.h>
@@ -9,6 +11,8 @@
 #include <string.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#include <errno.h>
+#include <sys/stat.h>
 
 
 /* ------------------------------------------------------------------------- */
@@ -113,8 +117,7 @@ build_package(
         "-mindepth 1 -maxdepth 1 -type d | head -n 1)\n"
         "\n"
         "if [ -z \"$SOURCE_DIR\" ]; then\n"
-        "    echo \"ark: could not find extracted source directory\" >&2\n"
-        "    exit 1\n"
+        "    SOURCE_DIR=\"$ARK_BUILD_DIR\"\n"
         "fi\n"
         "\n"
         "export ARK_SOURCE_DIR=\"$SOURCE_DIR\"\n"
@@ -188,9 +191,22 @@ install_package(
 )
 {
     char source_archive[ARK_PATH_MAX];
-    char template[] = "/tmp/ark-build-XXXXXX";
+    char ark_tmp[ARK_PATH_MAX];
+    char template[ARK_PATH_MAX];
     char *build_directory;
+    const char *home;
     int result;
+
+    home = getenv("HOME");
+
+    if (home == NULL) {
+        fprintf(
+            stderr,
+            "ark: HOME is not set\n"
+        );
+
+        return -1;
+    }
 
     if (snprintf(
             source_archive,
@@ -219,6 +235,46 @@ install_package(
         fprintf(
             stderr,
             "ark: run: ark fetch\n"
+        );
+
+        return -1;
+    }
+
+    /*
+     * Ark build directories live inside ~/.ark/tmp.
+     *
+     * This is intentional: /tmp may be mounted noexec, while
+     * Autotools and other build systems routinely execute binaries
+     * they compile during configuration.
+     */
+    if (snprintf(
+            ark_tmp,
+            sizeof(ark_tmp),
+            "%s/.ark/tmp",
+            home
+        ) >= (int)sizeof(ark_tmp)) {
+        fprintf(
+            stderr,
+            "ark: temporary path too long\n"
+        );
+
+        return -1;
+    }
+
+    if (mkdir(ark_tmp, 0700) != 0 && errno != EEXIST) {
+        perror("ark: mkdir");
+        return -1;
+    }
+
+    if (snprintf(
+            template,
+            sizeof(template),
+            "%s/ark-build-XXXXXX",
+            ark_tmp
+        ) >= (int)sizeof(template)) {
+        fprintf(
+            stderr,
+            "ark: build path too long\n"
         );
 
         return -1;
@@ -289,6 +345,45 @@ install_package(
 
 
 /* ------------------------------------------------------------------------- */
+/* Dependency-driven install                                                 */
+/* ------------------------------------------------------------------------- */
+
+struct install_context {
+    const char *sources_root;
+    const char *installed_root;
+};
+
+/*
+ * Called by ark_resolve_dependencies once per package, in dependency
+ * order (a package's dependencies are always installed before it).
+ * Every package resolved this way is recorded as implicitly
+ * installed; the root package the user actually asked for gets
+ * promoted to explicit afterwards, in ark_command_install.
+ */
+static int
+install_dependency_callback(
+    const struct ark_package *package,
+    void *context
+)
+{
+    struct install_context *ctx = context;
+
+    if (install_package(package, ctx->sources_root) != 0)
+        return -1;
+
+    if (ark_installed_record(ctx->installed_root, package, 0) != 0) {
+        fprintf(
+            stderr,
+            "ark: warning: could not record install state for %s\n",
+            package->name
+        );
+    }
+
+    return 0;
+}
+
+
+/* ------------------------------------------------------------------------- */
 /* Command                                                                   */
 /* ------------------------------------------------------------------------- */
 
@@ -298,7 +393,7 @@ ark_command_install(int argc, char **argv)
     const char *home;
     char recipes_root[ARK_PATH_MAX];
     char sources_root[ARK_PATH_MAX];
-    struct ark_package package;
+    char installed_root[ARK_PATH_MAX];
     int i;
     int failed;
 
@@ -350,24 +445,42 @@ ark_command_install(int argc, char **argv)
         return 1;
     }
 
+    if (snprintf(
+            installed_root,
+            sizeof(installed_root),
+            "%s/.ark/cache/installed",
+            home
+        ) >= (int)sizeof(installed_root)) {
+        fprintf(
+            stderr,
+            "ark: installed-cache path too long\n"
+        );
+
+        return 1;
+    }
+
     failed = 0;
 
     for (i = 0; i < argc; i++) {
-        memset(&package, 0, sizeof(package));
+        struct install_context context;
 
         printf(
-            "==> Searching recipes for %s\n",
+            "==> Resolving dependencies for %s\n",
             argv[i]
         );
 
-        if (ark_find_package(
-                recipes_root,
+        context.sources_root = sources_root;
+        context.installed_root = installed_root;
+
+        if (ark_resolve_dependencies(
                 argv[i],
-                &package
+                recipes_root,
+                install_dependency_callback,
+                &context
             ) != 0) {
             fprintf(
                 stderr,
-                "ark: package not found: %s\n",
+                "ark: install failed: %s\n",
                 argv[i]
             );
 
@@ -375,18 +488,12 @@ ark_command_install(int argc, char **argv)
             continue;
         }
 
-        printf(
-            "    found: %s/%s\n",
-            package.name,
-            package.version
-        );
-
-        if (install_package(
-                &package,
-                sources_root
-            ) != 0) {
-            failed = 1;
-            continue;
+        if (ark_installed_mark_explicit(installed_root, argv[i]) != 0) {
+            fprintf(
+                stderr,
+                "ark: warning: could not mark %s as explicitly installed\n",
+                argv[i]
+            );
         }
     }
 

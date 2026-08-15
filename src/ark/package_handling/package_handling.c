@@ -4,204 +4,366 @@
 
 #include <dirent.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
 
 /* ------------------------------------------------------------------------- */
-/* Filesystem                                                                */
+/* Filesystem helpers                                                        */
 /* ------------------------------------------------------------------------- */
-
-int
-ark_is_directory(const char *path)
-{
-    struct stat st;
-
-    return stat(path, &st) == 0 && S_ISDIR(st.st_mode);
-}
-
 
 int
 ark_is_regular_file(const char *path)
 {
     struct stat st;
 
-    return stat(path, &st) == 0 && S_ISREG(st.st_mode);
+    if (stat(path, &st) != 0)
+        return 0;
+
+    return S_ISREG(st.st_mode);
+}
+
+
+static int
+is_directory(const char *path)
+{
+    struct stat st;
+
+    if (stat(path, &st) != 0)
+        return 0;
+
+    return S_ISDIR(st.st_mode);
 }
 
 
 /* ------------------------------------------------------------------------- */
-/* Package specification                                                     */
+/* Version comparison                                                        */
 /* ------------------------------------------------------------------------- */
 
+/*
+ * Compares two dot-separated, purely numeric version strings, e.g.
+ * "4.4.1" vs "4.10.0". Returns <0, 0, or >0 like strcmp.
+ *
+ * Non-numeric components fall back to a plain string compare of
+ * that component so odd version schemes don't crash, they just
+ * don't sort "correctly".
+ */
 static int
-parse_package_spec(
-    const char *spec,
-    char *name,
-    size_t name_size,
-    char *version,
-    size_t version_size
-)
+version_compare(const char *a, const char *b)
 {
-    const char *separator;
-    size_t name_length;
-    size_t version_length;
+    while (*a != '\0' || *b != '\0') {
+        char *a_end;
+        char *b_end;
+        long a_num;
+        long b_num;
 
-    separator = strchr(spec, '@');
+        a_num = strtol(a, &a_end, 10);
+        b_num = strtol(b, &b_end, 10);
 
-    if (separator == NULL) {
-        name_length = strlen(spec);
+        if (a_end != a && b_end != b) {
+            if (a_num != b_num)
+                return a_num < b_num ? -1 : 1;
 
-        if (name_length == 0 ||
-            name_length >= name_size)
-            return -1;
+            a = a_end;
+            b = b_end;
+        } else {
+            /* Not a clean numeric component on one/both sides. */
+            size_t a_len = strcspn(a, ".");
+            size_t b_len = strcspn(b, ".");
+            int cmp = strncmp(a, b, a_len < b_len ? a_len : b_len);
 
-        memcpy(name, spec, name_length + 1);
+            if (cmp != 0)
+                return cmp;
 
-        version[0] = '\0';
+            if (a_len != b_len)
+                return a_len < b_len ? -1 : 1;
 
-        return 0;
+            a += a_len;
+            b += b_len;
+        }
+
+        if (*a == '.')
+            a++;
+
+        if (*b == '.')
+            b++;
     }
-
-    name_length = (size_t)(separator - spec);
-    version_length = strlen(separator + 1);
-
-    if (name_length == 0 ||
-        name_length >= name_size ||
-        version_length == 0 ||
-        version_length >= version_size)
-        return -1;
-
-    memcpy(name, spec, name_length);
-    name[name_length] = '\0';
-
-    memcpy(
-        version,
-        separator + 1,
-        version_length + 1
-    );
 
     return 0;
 }
 
 
 /* ------------------------------------------------------------------------- */
-/* Recipe discovery                                                          */
+/* Version directory selection                                               */
 /* ------------------------------------------------------------------------- */
 
-int
-ark_find_package(
-    const char *recipes_root,
-    const char *package_spec,
-    struct ark_package *package
+static int
+find_highest_version(
+    const char *package_dir,
+    char *version_out,
+    size_t version_out_size
 )
 {
-    DIR *repos;
-    struct dirent *repo_entry;
-    char package_name[ARK_PACKAGE_NAME_MAX];
-    char requested_version[ARK_PACKAGE_VERSION_MAX];
-    char package_root[ARK_PATH_MAX];
+    DIR *dir;
+    struct dirent *entry;
+    int found;
 
-    if (parse_package_spec(
-            package_spec,
-            package_name,
-            sizeof(package_name),
-            requested_version,
-            sizeof(requested_version)
-        ) != 0)
+    dir = opendir(package_dir);
+
+    if (dir == NULL)
         return -1;
 
-    repos = opendir(recipes_root);
+    found = 0;
 
-    if (repos == NULL)
-        return -1;
+    while ((entry = readdir(dir)) != NULL) {
+        char candidate_path[ARK_PATH_MAX];
+        char recipe_path[ARK_PATH_MAX];
 
-    while ((repo_entry = readdir(repos)) != NULL) {
-        DIR *versions;
-        struct dirent *version_entry;
-
-        if (strcmp(repo_entry->d_name, ".") == 0 ||
-            strcmp(repo_entry->d_name, "..") == 0)
-            continue;
-
-        if (repo_entry->d_name[0] == '.')
+        if (strcmp(entry->d_name, ".") == 0 ||
+            strcmp(entry->d_name, "..") == 0)
             continue;
 
         if (snprintf(
-                package_root,
-                sizeof(package_root),
-                "%s/%s/%s",
-                recipes_root,
-                repo_entry->d_name,
-                package_name
-            ) >= (int)sizeof(package_root))
+                candidate_path,
+                sizeof(candidate_path),
+                "%s/%s",
+                package_dir,
+                entry->d_name
+            ) >= (int)sizeof(candidate_path))
             continue;
 
-        if (!ark_is_directory(package_root))
+        if (!is_directory(candidate_path))
             continue;
 
-        versions = opendir(package_root);
-
-        if (versions == NULL)
+        if (snprintf(
+                recipe_path,
+                sizeof(recipe_path),
+                "%s/recipe.sh",
+                candidate_path
+            ) >= (int)sizeof(recipe_path))
             continue;
 
-        while ((version_entry = readdir(versions)) != NULL) {
-            char recipe_path[ARK_PATH_MAX];
+        if (!ark_is_regular_file(recipe_path))
+            continue;
 
-            if (strcmp(version_entry->d_name, ".") == 0 ||
-                strcmp(version_entry->d_name, "..") == 0)
+        if (!found ||
+            version_compare(entry->d_name, version_out) > 0) {
+            if (strlen(entry->d_name) >= version_out_size)
                 continue;
 
-            if (version_entry->d_name[0] == '.')
-                continue;
-
-            /*
-             * If a version was explicitly requested, skip
-             * every other version.
-             */
-            if (requested_version[0] != '\0' &&
-                strcmp(
-                    version_entry->d_name,
-                    requested_version
-                ) != 0)
-                continue;
-
-            if (snprintf(
-                    recipe_path,
-                    sizeof(recipe_path),
-                    "%s/%s/recipe.sh",
-                    package_root,
-                    version_entry->d_name
-                ) >= (int)sizeof(recipe_path))
-                continue;
-
-            if (!ark_is_regular_file(recipe_path))
-                continue;
-
-            if (strlen(package_name) >= sizeof(package->name) ||
-                strlen(version_entry->d_name) >= sizeof(package->version) ||
-                strlen(recipe_path) >= sizeof(package->recipe_path)) {
-                closedir(versions);
-                closedir(repos);
-                return -1;
-            }
-
-            memset(package, 0, sizeof(*package));
-
-            strcpy(package->name, package_name);
-            strcpy(package->version, version_entry->d_name);
-            strcpy(package->recipe_path, recipe_path);
-
-            closedir(versions);
-            closedir(repos);
-
-            return 0;
+            strcpy(version_out, entry->d_name);
+            found = 1;
         }
-
-        closedir(versions);
     }
 
-    closedir(repos);
+    closedir(dir);
 
-    return -1;
+    return found ? 0 : -1;
+}
+
+
+/* ------------------------------------------------------------------------- */
+/* ARK_DEPENDS parsing                                                       */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * Sources recipe_path in a subshell and prints $ARK_DEPENDS, so we
+ * pick up the real shell-expanded value rather than trying to parse
+ * the assignment as text. recipe.sh is already trusted: install.c
+ * and remove.c both source it directly to run build()/remove().
+ */
+static int
+read_depends(
+    const char *recipe_path,
+    char *buffer,
+    size_t buffer_size
+)
+{
+    char command[ARK_PATH_MAX + 64];
+    FILE *pipe;
+    size_t length;
+
+    if (snprintf(
+            command,
+            sizeof(command),
+            ". \"%s\" >/dev/null 2>&1; printf '%%s' \"$ARK_DEPENDS\"",
+            recipe_path
+        ) >= (int)sizeof(command))
+        return -1;
+
+    pipe = popen(command, "r");
+
+    if (pipe == NULL)
+        return -1;
+
+    length = fread(buffer, 1, buffer_size - 1, pipe);
+    buffer[length] = '\0';
+
+    pclose(pipe);
+
+    return 0;
+}
+
+
+static void
+split_depends(struct ark_package *package)
+{
+    char *token;
+    char *saveptr;
+    size_t i;
+
+    i = 0;
+    saveptr = NULL;
+
+    token = strtok_r(package->depends_storage, " \t\n", &saveptr);
+
+    while (token != NULL && i < ARK_MAX_DEPENDS) {
+        package->depends[i++] = token;
+        token = strtok_r(NULL, " \t\n", &saveptr);
+    }
+
+    package->depends[i] = NULL;
+}
+
+
+/* ------------------------------------------------------------------------- */
+/* Public API                                                                */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * recipes_root contains one directory per repo, e.g.:
+ *
+ *   <recipes_root>/<repo>/<name>/<version>/recipe.sh
+ *
+ * ark_find_package searches every repo directory under recipes_root
+ * for a matching package name, and across all matches picks the
+ * highest version (see version_compare()). If more than one repo
+ * ties on version for the same package, the repo encountered first
+ * (readdir order) wins.
+ */
+int
+ark_find_package(
+    const char *recipes_root,
+    const char *name,
+    struct ark_package *package
+)
+{
+    DIR *dir;
+    struct dirent *entry;
+    int found;
+    char best_recipe_path[ARK_PATH_MAX];
+    char best_version[ARK_VERSION_MAX];
+
+    if (strlen(name) >= sizeof(package->name)) {
+        fprintf(
+            stderr,
+            "ark: package name too long: %s\n",
+            name
+        );
+
+        return -1;
+    }
+
+    dir = opendir(recipes_root);
+
+    if (dir == NULL) {
+        fprintf(
+            stderr,
+            "ark: cannot open recipes root: %s\n",
+            recipes_root
+        );
+
+        return -1;
+    }
+
+    found = 0;
+    best_version[0] = '\0';
+    best_recipe_path[0] = '\0';
+
+    while ((entry = readdir(dir)) != NULL) {
+        char repo_path[ARK_PATH_MAX];
+        char package_dir[ARK_PATH_MAX];
+        char version[ARK_VERSION_MAX];
+
+        if (strcmp(entry->d_name, ".") == 0 ||
+            strcmp(entry->d_name, "..") == 0)
+            continue;
+
+        if (snprintf(
+                repo_path,
+                sizeof(repo_path),
+                "%s/%s",
+                recipes_root,
+                entry->d_name
+            ) >= (int)sizeof(repo_path))
+            continue;
+
+        if (!is_directory(repo_path))
+            continue;
+
+        if (snprintf(
+                package_dir,
+                sizeof(package_dir),
+                "%s/%s",
+                repo_path,
+                name
+            ) >= (int)sizeof(package_dir))
+            continue;
+
+        if (!is_directory(package_dir))
+            continue;
+
+        version[0] = '\0';
+
+        if (find_highest_version(
+                package_dir,
+                version,
+                sizeof(version)
+            ) != 0)
+            continue;
+
+        if (!found || version_compare(version, best_version) > 0) {
+            if (snprintf(
+                    best_recipe_path,
+                    sizeof(best_recipe_path),
+                    "%s/%s/recipe.sh",
+                    package_dir,
+                    version
+                ) >= (int)sizeof(best_recipe_path))
+                continue;
+
+            strcpy(best_version, version);
+            found = 1;
+        }
+    }
+
+    closedir(dir);
+
+    if (!found)
+        return -1;
+
+    memset(package, 0, sizeof(*package));
+
+    strcpy(package->name, name);
+    strcpy(package->version, best_version);
+    strcpy(package->recipe_path, best_recipe_path);
+
+    if (read_depends(
+            package->recipe_path,
+            package->depends_storage,
+            sizeof(package->depends_storage)
+        ) != 0) {
+        fprintf(
+            stderr,
+            "ark: failed to read ARK_DEPENDS for %s\n",
+            name
+        );
+
+        return -1;
+    }
+
+    split_depends(package);
+
+    return 0;
 }

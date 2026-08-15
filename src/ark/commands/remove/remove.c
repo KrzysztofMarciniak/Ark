@@ -3,6 +3,7 @@
 #include "remove.h"
 #include "command_logic/command_logic.h"
 #include "../../package_handling/package_handling.h"
+#include "../../installed_handling/installed_handling.h"
 
 #include <string.h>
 #include <stdio.h>
@@ -46,8 +47,8 @@ run_command(char *const argv[])
 /* Remove                                                                    */
 /* ------------------------------------------------------------------------- */
 
-static int
-remove_package(const struct ark_package *package)
+int
+ark_remove_package(const struct ark_package *package)
 {
     char template[] = "/tmp/ark-remove-XXXXXX";
     char *remove_directory;
@@ -123,6 +124,7 @@ ark_command_remove(int argc, char **argv)
 {
     const char *home;
     char recipes_root[ARK_PATH_MAX];
+    char installed_root[ARK_PATH_MAX];
     struct ark_package package;
 
     if (argc < 1) {
@@ -154,6 +156,20 @@ ark_command_remove(int argc, char **argv)
         fprintf(
             stderr,
             "ark: recipe path too long\n"
+        );
+
+        return 1;
+    }
+
+    if (snprintf(
+            installed_root,
+            sizeof(installed_root),
+            "%s/.ark/cache/installed",
+            home
+        ) >= (int)sizeof(installed_root)) {
+        fprintf(
+            stderr,
+            "ark: installed-cache path too long\n"
         );
 
         return 1;
@@ -192,7 +208,7 @@ ark_command_remove(int argc, char **argv)
         package.version
     );
 
-    if (remove_package(&package) != 0) {
+    if (ark_remove_package(&package) != 0) {
         fprintf(
             stderr,
             "ark: remove failed: %s-%s\n",
@@ -201,6 +217,14 @@ ark_command_remove(int argc, char **argv)
         );
 
         return 1;
+    }
+
+    if (ark_installed_forget(installed_root, package.name) != 0) {
+        fprintf(
+            stderr,
+            "ark: warning: could not update install state for %s\n",
+            package.name
+        );
     }
 
     printf(
