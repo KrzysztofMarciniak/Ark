@@ -1,9 +1,9 @@
 #ifndef ARK_INSTALLED_HANDLING_H
 #define ARK_INSTALLED_HANDLING_H
 
-#include "../package_handling/package_handling.h"
-
 #include <stddef.h>
+
+#include "../package_handling/package_handling.h"
 
 /*
  * Tracks what's currently installed under:
@@ -30,55 +30,30 @@
  * existing explicit marker is preserved (installing something as a
  * side-effect dependency never demotes an existing explicit install).
  */
-int
-ark_installed_record(
-    const char *installed_root,
-    const struct ark_package *package,
-    int explicit
-);
+int ark_installed_record(const char* installed_root,
+                         const struct ark_package* package, int explicit);
 
 /* Marks an already-recorded package as explicit. */
-int
-ark_installed_mark_explicit(
-    const char *installed_root,
-    const char *name
-);
+int ark_installed_mark_explicit(const char* installed_root, const char* name);
 
 /* Removes the manifest entry for `name`. Missing entries are not an error. */
-int
-ark_installed_forget(
-    const char *installed_root,
-    const char *name
-);
+int ark_installed_forget(const char* installed_root, const char* name);
 
 /* Non-zero if `name` has an install record at all. */
-int
-ark_installed_exists(
-    const char *installed_root,
-    const char *name
-);
+int ark_installed_exists(const char* installed_root, const char* name);
 
 /* Non-zero if `name` is recorded as explicitly installed. */
-int
-ark_installed_is_explicit(
-    const char *installed_root,
-    const char *name
-);
+int ark_installed_is_explicit(const char* installed_root, const char* name);
 
 /*
  * Fills depends_out (NULL-terminated, backed by depends_storage) with
  * the dependency names recorded for `name` at install time. Returns
  * 0 on success, -1 if there's no record for `name`.
  */
-int
-ark_installed_get_depends(
-    const char *installed_root,
-    const char *name,
-    char *depends_storage,
-    size_t depends_storage_size,
-    char **depends_out,
-    size_t depends_out_capacity
-);
+int ark_installed_get_depends(const char* installed_root, const char* name,
+                              char* depends_storage,
+                              size_t depends_storage_size, char** depends_out,
+                              size_t depends_out_capacity);
 
 /*
  * Lists every recorded package name under installed_root. *names_out
@@ -86,13 +61,8 @@ ark_installed_get_depends(
  * with ark_installed_free_list. Returns 0 on success (including an
  * empty list), -1 on error.
  */
-int
-ark_installed_list(
-    const char *installed_root,
-    char ***names_out
-);
+int ark_installed_list(const char* installed_root, char*** names_out);
 
-void
-ark_installed_free_list(char **names);
+void ark_installed_free_list(char** names);
 
 #endif

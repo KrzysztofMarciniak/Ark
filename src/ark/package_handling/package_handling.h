@@ -3,10 +3,10 @@
 
 #include <stddef.h>
 
-#define ARK_PATH_MAX      4096
-#define ARK_NAME_MAX       256
-#define ARK_VERSION_MAX     64
-#define ARK_MAX_DEPENDS     64
+#define ARK_PATH_MAX 4096
+#define ARK_NAME_MAX 256
+#define ARK_VERSION_MAX 64
+#define ARK_MAX_DEPENDS 64
 
 /*
  * Recipe layout, matching the example recipe.sh:
@@ -19,15 +19,15 @@
  * ARK_BINARIES, and the build()/remove() shell functions.
  */
 struct ark_package {
-    char name[ARK_NAME_MAX];
-    char version[ARK_VERSION_MAX];
-    char recipe_path[ARK_PATH_MAX];
+        char name[ARK_NAME_MAX];
+        char version[ARK_VERSION_MAX];
+        char recipe_path[ARK_PATH_MAX];
 
-    /* NULL-terminated list of dependency package names. */
-    char *depends[ARK_MAX_DEPENDS + 1];
+        /* NULL-terminated list of dependency package names. */
+        char* depends[ARK_MAX_DEPENDS + 1];
 
-    /* Backing storage for the strings pointed to by depends[]. */
-    char depends_storage[ARK_PATH_MAX];
+        /* Backing storage for the strings pointed to by depends[]. */
+        char depends_storage[ARK_PATH_MAX];
 };
 
 /*
@@ -39,14 +39,9 @@ struct ark_package {
  * found, no version directories, or recipe.sh missing/unreadable),
  * returns -1 and leaves *package unspecified.
  */
-int
-ark_find_package(
-    const char *recipes_root,
-    const char *name,
-    struct ark_package *package
-);
+int ark_find_package(const char* recipes_root, const char* name,
+                     struct ark_package* package);
 
-int
-ark_is_regular_file(const char *path);
+int ark_is_regular_file(const char* path);
 
 #endif
