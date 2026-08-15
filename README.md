@@ -1,6 +1,6 @@
 # Ark
 
-An **offline-ready**, minimal package manager written in C for [Simple-Linux](https://github.com/KrzysztofMarciniak/Simple-Linux).
+An **offline-ready, minimal package manager written entirely in C for managing user-installed software in `.ark/bin/` on [Simple-Linux](https://github.com/KrzysztofMarciniak/Simple-Linux).**
 
 ## What "offline-ready" means
 
@@ -25,7 +25,6 @@ This makes Ark suitable for:
 - Air-gapped deployments
 - Build systems that need reproducible, deterministic package acquisition
 - Distributing Simple-Linux across isolated machines
-
 ## Quick start
 
 ```bash
@@ -41,6 +40,8 @@ ark install busybox
 ark install make
 ark remove make
 ```
+
+> **Note:** Ark does not technically require a network connection to install packages. It only requires the package recipes and their corresponding source archives to be available locally. You can provide these yourself in `~/.ark/recipes/` and `~/.ark/sources/`, allowing Ark to operate completely offline without running `ark fetch`.
 
 ## Build Ark
 
