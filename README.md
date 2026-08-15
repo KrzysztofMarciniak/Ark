@@ -2,6 +2,9 @@
 
 An **offline-ready, minimal package manager written entirely in C for managing user-installed software in `.ark/bin/` on [Simple-Linux](https://github.com/KrzysztofMarciniak/Simple-Linux).**
 
+why choose only use .ark?
+to make it incredibly easy to transport to other systems.
+
 ## What "offline-ready" means
 
 Ark is designed to work **without network access** after an initial setup phase:
