@@ -5,9 +5,10 @@
 
 static const char *required_programs[] = {
     "curl",
-    "tar",
+    "tar", // requires XZ support.
     "sha256sum",
     "git",
+    "rm",
     NULL
 };
 
