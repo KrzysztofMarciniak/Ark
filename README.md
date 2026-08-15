@@ -39,6 +39,8 @@ ark fetch
 ark install busybox
 ark install make
 ark remove make
+# To use packages installed by Ark, add the following to your .bashrc (or equivalent configuration file for your shell):
+export PATH="$HOME/.ark/bin:$PATH"
 ```
 
 > **Note:** Ark does not technically require a network connection to install packages. It only requires the package recipes and their corresponding source archives to be available locally. You can provide these yourself in `~/.ark/recipes/` and `~/.ark/sources/`, allowing Ark to operate completely offline without running `ark fetch`.
