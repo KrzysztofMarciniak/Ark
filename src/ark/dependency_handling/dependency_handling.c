@@ -21,7 +21,7 @@
 /* ------------------------------------------------------------------------- */
 
 struct dep_alt {
-        char* name;         /* non-NULL for a leaf name */
+        char* name;              /* non-NULL for a leaf name */
         struct dep_group* group; /* non-NULL for a nested '(' ... ')' */
 };
 
@@ -77,7 +77,8 @@ static void skip_space(const char** p) {
 
 static struct dep_group* parse_group(const char** p, int depth);
 
-/* Parses a single alternative: either a bare name, or a nested '(' group ')'. */
+/* Parses a single alternative: either a bare name, or a nested '(' group ')'.
+ */
 static int parse_alt(const char** p, int depth, struct dep_alt* out) {
         memset(out, 0, sizeof(*out));
 
@@ -117,8 +118,7 @@ static int parse_alt(const char** p, int depth, struct dep_alt* out) {
                 }
 
                 if (*p == start) {
-                        fprintf(stderr,
-                                "ark: empty term in dependency spec\n");
+                        fprintf(stderr, "ark: empty term in dependency spec\n");
                         return -1;
                 }
 
@@ -209,7 +209,7 @@ static int dep_sequence_push(struct dep_sequence* seq, struct dep_group* g) {
  *   "(clang || (tcc || gcc)) fastfetch"
  * Returns NULL on malformed input. */
 static struct dep_sequence* parse_dependency_spec(const char* spec) {
-        const char* p = spec;
+        const char* p            = spec;
         struct dep_sequence* seq = calloc(1, sizeof(*seq));
 
         if (seq == NULL) return NULL;
@@ -318,7 +318,7 @@ static int resolve_package(struct dependency_state* state, const char* name,
  * winning package resolved/marked on success, or -1 if every alternative
  * in the group failed to resolve (with a diagnostic listing them). */
 static int resolve_group(struct dependency_state* state,
-                          struct dep_group* group, int depth) {
+                         struct dep_group* group, int depth) {
         size_t i;
 
         for (i = 0; i < group->count; i++) {
@@ -326,9 +326,9 @@ static int resolve_group(struct dependency_state* state,
 
                 if (alt->name != NULL) {
                         if (ark_package_exists(state->recipes_root,
-                                                alt->name)) {
-                                if (resolve_package(state, alt->name,
-                                                     depth) == 0) {
+                                               alt->name)) {
+                                if (resolve_package(state, alt->name, depth) ==
+                                    0) {
                                         return 0;
                                 }
                                 /* Found but failed to resolve (e.g. its own
@@ -350,8 +350,8 @@ static int resolve_group(struct dependency_state* state,
         for (i = 0; i < group->count; i++) {
                 struct dep_alt* alt = &group->alts[i];
 
-                fprintf(stderr, " %s", alt->name != NULL ? alt->name
-                                                           : "(nested group)");
+                fprintf(stderr, " %s",
+                        alt->name != NULL ? alt->name : "(nested group)");
                 if (i + 1 < group->count) fprintf(stderr, " ||");
         }
         fprintf(stderr, "\n");
@@ -397,7 +397,7 @@ static int resolve_package(struct dependency_state* state, const char* name,
          * '(' ... '||' ... ')' groups only make sense parsed as a whole.
          */
         {
-                char* joined = NULL;
+                char* joined      = NULL;
                 size_t joined_len = 0;
 
                 for (i = 0; package.depends[i] != NULL; i++) {
@@ -439,7 +439,7 @@ static int resolve_package(struct dependency_state* state, const char* name,
 
                         for (t = 0; t < seq->count; t++) {
                                 if (resolve_group(state, seq->terms[t],
-                                                   depth + 1) != 0) {
+                                                  depth + 1) != 0) {
                                         failed = 1;
                                         break;
                                 }

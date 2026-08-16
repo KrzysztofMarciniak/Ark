@@ -481,24 +481,40 @@ static int find_repo_packages(struct ark_repo* repo) {
 /* Source store                                                              */
 /* ------------------------------------------------------------------------- */
 
+static const char* const canonical_extensions[] = {"tar.xz", "tar.gz",
+                                                   "tar.bz2", "tar", NULL};
+
 static int package_source_path(const struct ark_package* package,
                                const char* sources_root, char* path,
                                size_t path_size) {
+        int i;
+
+        for (i = 0; canonical_extensions[i] != NULL; ++i) {
+                if (snprintf(path, path_size, "%s/%s/%s/sources.%s",
+                             sources_root, package->name, package->version,
+                             canonical_extensions[i]) >= (int)path_size)
+                        return -1;
+
+                if (is_regular_file(path)) return 0;
+        }
+
+        /* Not fetched under any supported extension. Leave path pointing
+         * at the .tar.xz form so callers building a fresh fetch have a
+         * sane default to overwrite -- the actual extension used on a
+         * fresh fetch is decided by archive_extension() instead. */
         if (snprintf(path, path_size, "%s/%s/%s/sources.tar.xz", sources_root,
                      package->name, package->version) >= (int)path_size)
                 return -1;
 
-        return 0;
+        return -1;
 }
 
 static int package_is_fetched(const struct ark_package* package,
                               const char* sources_root) {
         char path[ARK_PATH_MAX];
 
-        if (package_source_path(package, sources_root, path, sizeof(path)) != 0)
-                return 0;
-
-        return is_regular_file(path);
+        return package_source_path(package, sources_root, path, sizeof(path)) ==
+               0;
 }
 
 static void check_repo_packages(struct ark_repo* repo,
@@ -556,8 +572,8 @@ static int write_unfetched_cache(const struct ark_repo* repo,
 /* ------------------------------------------------------------------------- */
 
 static const char* archive_extension(const char* url) {
-        static const char* known[] = {".tar.xz",  ".tar.gz", ".tgz",
-                                      ".tar.bz2", ".tbz2",   NULL};
+        static const char* known[] = {".tar.xz", ".tar.gz", ".tar.bz2", ".tar",
+                                      NULL};
 
         size_t url_len;
         int i;
@@ -580,55 +596,6 @@ static const char* archive_extension(const char* url) {
         }
 
         return NULL;
-}
-
-/*
- * Extract an archive into:
- *
- *     <temporary>/source/
- *
- * We deliberately use tar instead of shell commands so there is no shell
- * interpolation of the URL or paths.
- */
-static int extract_archive(const char* archive, const char* directory,
-                           const char* extension) {
-        char* argv[8];
-
-        /*
-         * tar -xf archive -C directory
-         */
-        (void)extension;
-
-        argv[0] = "tar";
-        argv[1] = "-xf";
-        argv[2] = (char*)archive;
-        argv[3] = "-C";
-        argv[4] = (char*)directory;
-        argv[5] = NULL;
-
-        return run_command(argv);
-}
-
-/*
- * Repackage the extracted source as:
- *
- *     sources.tar.xz
- */
-static int repackage_source(const char* source_directory, const char* output) {
-        char* argv[8];
-
-        /*
-         * tar -cJf output -C source_directory .
-         */
-        argv[0] = "tar";
-        argv[1] = "-cJf";
-        argv[2] = (char*)output;
-        argv[3] = "-C";
-        argv[4] = (char*)source_directory;
-        argv[5] = ".";
-        argv[6] = NULL;
-
-        return run_command(argv);
 }
 
 /*
@@ -658,7 +625,6 @@ static int fetch_package(const struct ark_package* package,
         char destination[ARK_PATH_MAX];
         char temporary_root[ARK_PATH_MAX];
         char download_path[ARK_PATH_MAX];
-        char extracted_path[ARK_PATH_MAX];
         char archive_path[ARK_PATH_MAX];
         char checksum_file[ARK_PATH_MAX];
         char expected_line[ARK_PATH_MAX];
@@ -666,6 +632,23 @@ static int fetch_package(const struct ark_package* package,
         char* verify_argv[4];
         FILE* file;
         int result;
+        const char* extension;
+
+        /*
+         * Only these forms are stored as-is: sources are kept in
+         * whatever archive format the recipe's ARK_SOURCE_URL uses,
+         * rather than always being repackaged as .tar.xz. Reject
+         * anything else up front, before spending a download on it.
+         */
+        extension = archive_extension(package->source_url);
+
+        if (extension == NULL) {
+                fprintf(stderr,
+                        "ark: %s/%s: unsupported source archive extension "
+                        "(need .tar, .tar.xz, .tar.gz, or .tar.bz2): %s\n",
+                        package->name, package->version, package->source_url);
+                return -1;
+        }
 
         /*
          * Canonical source location:
@@ -698,12 +681,13 @@ static int fetch_package(const struct ark_package* package,
                      temporary_root) >= (int)sizeof(download_path))
                 return -1;
 
-        if (snprintf(extracted_path, sizeof(extracted_path), "%s/extracted",
-                     temporary_root) >= (int)sizeof(extracted_path))
-                return -1;
-
-        if (snprintf(archive_path, sizeof(archive_path), "%s/sources.tar.xz",
-                     destination) >= (int)sizeof(archive_path))
+        /*
+         * Canonical archive name preserves the real extension, e.g.
+         * sources.tar.xz, sources.tar.gz, sources.tar.bz2, sources.tar.
+         * extension already includes the leading '.'.
+         */
+        if (snprintf(archive_path, sizeof(archive_path), "%s/sources%s",
+                     destination, extension) >= (int)sizeof(archive_path))
                 return -1;
 
         if (snprintf(checksum_file, sizeof(checksum_file), "%s/checksum",
@@ -781,31 +765,13 @@ static int fetch_package(const struct ark_package* package,
         printf("    verified %s-%s\n", package->name, package->version);
 
         /*
-         * Extract.
+         * The verified download IS the canonical archive -- no
+         * extract/repackage round trip. Just move it into place.
          */
-        if (mkdir_p(extracted_path) != 0) {
-                remove_directory(temporary_root);
-                return -1;
-        }
+        if (rename(download_path, archive_path) != 0) {
+                fprintf(stderr, "ark: failed to store %s: %s\n", archive_path,
+                        strerror(errno));
 
-        if (extract_archive(download_path, extracted_path,
-                            archive_extension(package->source_url)) != 0) {
-                fprintf(stderr, "ark: failed to extract %s\n",
-                        package->source_url);
-
-                remove_directory(temporary_root);
-                return -1;
-        }
-
-        /*
-         * Repackage everything into Ark's canonical format.
-         *
-         * sources.tar.xz
-         */
-        if (repackage_source(extracted_path, archive_path) != 0) {
-                fprintf(stderr, "ark: failed to create %s\n", archive_path);
-
-                unlink(archive_path);
                 remove_directory(temporary_root);
                 return -1;
         }
@@ -817,10 +783,193 @@ static int fetch_package(const struct ark_package* package,
          */
         remove_directory(temporary_root);
 
-        printf("    cached %s/%s/sources.tar.xz\n", package->name,
-               package->version);
+        printf("    cached %s/%s/sources%s\n", package->name, package->version,
+               extension);
 
         return 0;
+}
+
+/* ------------------------------------------------------------------------- */
+/* Parallel fetch scheduler                                                  */
+/* ------------------------------------------------------------------------- */
+
+#define ARK_DEFAULT_FETCH_JOBS 8
+#define ARK_MAX_FETCH_JOBS 64
+
+/*
+ * Number of packages to fetch concurrently. Overridable via
+ * ARK_FETCH_JOBS since this is network-bound, not CPU-bound -- the
+ * number of cores isn't a meaningful default the way it is for
+ * compilation, so a fixed default is used instead.
+ */
+static size_t fetch_job_limit(void) {
+        const char* env;
+        long value;
+        char* end;
+
+        env = getenv("ARK_FETCH_JOBS");
+
+        if (env == NULL || env[0] == '\0') return ARK_DEFAULT_FETCH_JOBS;
+
+        value = strtol(env, &end, 10);
+
+        if (*end != '\0' || value < 1) return ARK_DEFAULT_FETCH_JOBS;
+
+        if (value > ARK_MAX_FETCH_JOBS) value = ARK_MAX_FETCH_JOBS;
+
+        return (size_t)value;
+}
+
+struct fetch_slot {
+        pid_t pid;
+        struct ark_package* package;
+        int in_use;
+};
+
+/*
+ * Waits for any one in-flight fetch to finish, updates the matching
+ * package's fetched flag and prints the outcome, frees its slot, and
+ * reports success/failure via *ok. Returns -1 only on a waitpid()
+ * failure (not on the child fetch itself failing).
+ */
+static int reap_one_fetch(struct fetch_slot* slots, size_t slot_count,
+                          int* ok) {
+        pid_t finished;
+        int status;
+        size_t i;
+
+        finished = waitpid(-1, &status, 0);
+
+        if (finished < 0) return -1;
+
+        for (i = 0; i < slot_count; ++i) {
+                struct ark_package* package;
+
+                if (!slots[i].in_use || slots[i].pid != finished) continue;
+
+                package = slots[i].package;
+
+                if (WIFEXITED(status) && WEXITSTATUS(status) == 0) {
+                        package->fetched = 1;
+                        *ok              = 1;
+                } else {
+                        fprintf(stderr, "ark: failed to fetch %s/%s\n",
+                                package->name, package->version);
+                        package->fetched = 0;
+                        *ok              = 0;
+                }
+
+                slots[i].in_use = 0;
+                slots[i].pid    = -1;
+
+                return 0;
+        }
+
+        /* Reaped a pid we weren't tracking (shouldn't happen). */
+        *ok = 1;
+
+        return 0;
+}
+
+/*
+ * Fetches every not-yet-fetched package in repo concurrently, up to
+ * fetch_job_limit() at a time. Fails fast: once any fetch fails, no
+ * further fetches are launched, but already in-flight ones are left
+ * to finish (and reaped) rather than killed, since there is a
+ * partially-written file on disk for them either way.
+ *
+ * Returns 0 if every package fetched successfully, -1 otherwise.
+ */
+static int fetch_packages_parallel(struct ark_repo* repo,
+                                   const char* sources_root) {
+        size_t job_limit;
+        struct fetch_slot* slots;
+        size_t active;
+        size_t i;
+        int all_ok;
+
+        job_limit = fetch_job_limit();
+
+        slots = calloc(job_limit, sizeof(*slots));
+
+        if (slots == NULL) {
+                fprintf(stderr, "ark: out of memory\n");
+                return -1;
+        }
+
+        for (i = 0; i < job_limit; ++i) slots[i].pid = -1;
+
+        active = 0;
+        all_ok = 1;
+
+        for (i = 0; i < repo->packages.count; ++i) {
+                struct ark_package* package;
+                size_t slot;
+                pid_t pid;
+
+                package = &repo->packages.items[i];
+
+                if (package->fetched) continue;
+
+                if (!all_ok) break; /* fail-fast: stop launching new jobs */
+
+                while (active == job_limit) {
+                        int ok = 1;
+
+                        if (reap_one_fetch(slots, job_limit, &ok) != 0) {
+                                free(slots);
+                                return -1;
+                        }
+
+                        if (!ok) all_ok = 0;
+
+                        active--;
+
+                        if (!all_ok) break;
+                }
+
+                if (!all_ok) break;
+
+                for (slot = 0; slot < job_limit; ++slot) {
+                        if (!slots[slot].in_use) break;
+                }
+
+                pid = fork();
+
+                if (pid < 0) {
+                        perror("ark: fork");
+                        free(slots);
+                        return -1;
+                }
+
+                if (pid == 0) {
+                        /* Child: fetch this one package and exit. */
+                        _exit(fetch_package(package, sources_root) == 0 ? 0
+                                                                        : 1);
+                }
+
+                slots[slot].pid     = pid;
+                slots[slot].package = package;
+                slots[slot].in_use  = 1;
+                active++;
+        }
+
+        while (active > 0) {
+                int ok = 1;
+
+                if (reap_one_fetch(slots, job_limit, &ok) != 0) {
+                        free(slots);
+                        return -1;
+                }
+
+                if (!ok) all_ok = 0;
+
+                active--;
+        }
+
+        free(slots);
+
+        return all_ok ? 0 : -1;
 }
 
 /* ------------------------------------------------------------------------- */
@@ -880,19 +1029,9 @@ static int process_repository(struct ark_repo* repo, const char* sources_root,
         }
 
         /*
-         * Fetch only this repository's missing packages.
+         * Fetch only this repository's missing packages, concurrently.
          */
-        for (i = 0; i < repo->packages.count; ++i) {
-                struct ark_package* package;
-
-                package = &repo->packages.items[i];
-
-                if (package->fetched) continue;
-
-                if (fetch_package(package, sources_root) != 0) return -1;
-
-                package->fetched = 1;
-        }
+        if (fetch_packages_parallel(repo, sources_root) != 0) return -1;
 
         /*
          * Rewrite the cache after fetching.

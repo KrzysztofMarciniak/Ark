@@ -138,6 +138,41 @@ static int remove_build_directory(const char* path) {
         return WEXITSTATUS(status);
 }
 
+/* Supported source archive extensions, tried in this order. tar -xf
+ * auto-detects the actual compression from file contents regardless
+ * of which of these matched, so no changes are needed downstream in
+ * the extraction script -- this only decides which file to hand it. */
+static const char* const source_archive_extensions[] = {"tar.xz", "tar.gz",
+                                                        "tar.bz2", "tar", NULL};
+
+/*
+ * Finds the fetched source archive for package/version under
+ * sources_root, trying each supported extension in turn. On success,
+ * fills source_archive with the full path and returns 0. On failure
+ * (no matching file for any supported extension), returns -1.
+ */
+static int find_source_archive(const char* sources_root,
+                               const struct ark_package* package,
+                               char* source_archive,
+                               size_t source_archive_size) {
+        int i;
+
+        for (i = 0; source_archive_extensions[i] != NULL; i++) {
+                if (snprintf(source_archive, source_archive_size,
+                             "%s/%s/%s/sources.%s", sources_root, package->name,
+                             package->version, source_archive_extensions[i]) >=
+                    (int)source_archive_size) {
+                        fprintf(stderr, "ark: source path too long\n");
+
+                        return -1;
+                }
+
+                if (ark_is_regular_file(source_archive)) return 0;
+        }
+
+        return -1;
+}
+
 /* ------------------------------------------------------------------------- */
 /* Install                                                                    */
 /* ------------------------------------------------------------------------- */
@@ -159,15 +194,8 @@ static int install_package(const struct ark_package* package,
                 return -1;
         }
 
-        if (snprintf(source_archive, sizeof(source_archive),
-                     "%s/%s/%s/sources.tar.xz", sources_root, package->name,
-                     package->version) >= (int)sizeof(source_archive)) {
-                fprintf(stderr, "ark: source path too long\n");
-
-                return -1;
-        }
-
-        if (!ark_is_regular_file(source_archive)) {
+        if (find_source_archive(sources_root, package, source_archive,
+                                sizeof(source_archive)) != 0) {
                 fprintf(stderr, "ark: source not fetched: %s/%s\n",
                         package->name, package->version);
 
