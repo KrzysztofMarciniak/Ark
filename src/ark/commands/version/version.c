@@ -4,7 +4,7 @@
 
 #include "../../../command_logic/command_logic.h"
 
-#define ARK_VERSION "0.0.3"
+#define ARK_VERSION "0.0.4"
 
 int ark_command_version(int argc, char** argv) {
         (void)argc;

@@ -519,9 +519,8 @@ int ark_resolve_dependencies(const char* package_name, const char* recipes_root,
         int ok;
         int result;
 
-        result = ark_resolve_dependencies_multi((char**)&package_name, 1,
-                                                 recipes_root, callback,
-                                                 context, &ok);
+        result = ark_resolve_dependencies_multi(
+            (char**)&package_name, 1, recipes_root, callback, context, &ok);
 
         return result;
 }
