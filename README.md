@@ -7,6 +7,24 @@ outside `~/.ark`. It's being built as the package manager for
 
 The name comes from Noah's Ark.
 
+## Table of contents
+
+- [TL;DR](#tldr)
+- [0. What it is, why it exists](#0-what-it-is-why-it-exists)
+- [1. How to install Ark](#1-how-to-install-ark)
+  - [Requirements](#requirements)
+  - [Build](#build)
+  - [Install the binary (optional)](#install-the-binary-optional)
+- [2. How to use Ark](#2-how-to-use-ark)
+  - [Prerequisite programs](#prerequisite-programs)
+  - [First-time setup](#first-time-setup)
+  - [Commands](#commands)
+  - [Recipe lookup](#recipe-lookup)
+- [3. How it was made](#3-how-it-was-made)
+- [4. Contributing](#4-contributing)
+  - [To Ark itself](#to-ark-itself)
+  - [Recipes (ark-recipes)](#recipes-ark-recipes)
+
 ## TL;DR
 
 ```bash
@@ -346,7 +364,7 @@ reserved for later, write them anyway so recipes stay self-documenting.
 - `ARK_SOURCE_URL` — archive URL (`.tar.xz`, `.tar.gz`/`.tgz`, or
   `.tar.bz2`/`.tbz2`)
 - `ARK_SOURCE_SHA256` — checked by `ark fetch`
-- `ARK_TYPE` — free-form, e.g. `"source"` or `"binary"`
+- `ARK_TYPE` — free-form, e.g. "source" or "binary"
 - `ARK_DEPENDS` — space-separated package names, e.g.
   `ARK_DEPENDS="zlib openssl"`, empty string if none
 - `ARK_BINARIES` — free-form list of binaries this provides
