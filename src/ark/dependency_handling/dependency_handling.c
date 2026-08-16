@@ -462,11 +462,34 @@ static int resolve_package(struct dependency_state* state, const char* name,
 /* Public API                                                                */
 /* ------------------------------------------------------------------------- */
 
-int ark_resolve_dependencies(const char* package_name, const char* recipes_root,
-                             ark_dependency_callback callback, void* context) {
+/*
+ * Resolves dependencies for multiple top-level targets against a
+ * single shared "already resolved" set, so a dependency common to
+ * two or more targets is only found/built/callback'd once instead of
+ * once per target that needs it.
+ *
+ * Targets are processed in order. If resolving one target fails, its
+ * per_target_ok[i] entry is set to 0 and processing continues with
+ * the next target -- a failure on one target does not abort the
+ * others, matching the previous per-target-loop behavior in
+ * ark_command_install. Anything already successfully resolved for an
+ * earlier target (including partial progress on a target that later
+ * failed) remains in the shared seen set and is not re-attempted.
+ *
+ * per_target_ok must point to an array of at least package_count
+ * ints; each is set to 1 on success, 0 on failure. Pass NULL if you
+ * don't need per-target results (e.g. all failures are fatal to you
+ * anyway).
+ *
+ * Returns 0 if every target resolved successfully, -1 if any did.
+ */
+int ark_resolve_dependencies_multi(char** package_names, size_t package_count,
+                                   const char* recipes_root,
+                                   ark_dependency_callback callback,
+                                   void* context, int* per_target_ok) {
         struct dependency_state state;
         size_t i;
-        int result;
+        int any_failed;
 
         memset(&state, 0, sizeof(state));
 
@@ -474,11 +497,31 @@ int ark_resolve_dependencies(const char* package_name, const char* recipes_root,
         state.callback     = callback;
         state.context      = context;
 
-        result = resolve_package(&state, package_name, 0);
+        any_failed = 0;
+
+        for (i = 0; i < package_count; i++) {
+                int ok = resolve_package(&state, package_names[i], 0) == 0;
+
+                if (per_target_ok != NULL) per_target_ok[i] = ok;
+
+                if (!ok) any_failed = 1;
+        }
 
         for (i = 0; i < state.package_count; i++) free(state.packages[i]);
 
         free(state.packages);
+
+        return any_failed ? -1 : 0;
+}
+
+int ark_resolve_dependencies(const char* package_name, const char* recipes_root,
+                             ark_dependency_callback callback, void* context) {
+        int ok;
+        int result;
+
+        result = ark_resolve_dependencies_multi((char**)&package_name, 1,
+                                                 recipes_root, callback,
+                                                 context, &ok);
 
         return result;
 }

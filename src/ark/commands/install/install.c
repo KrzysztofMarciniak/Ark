@@ -305,6 +305,8 @@ int ark_command_install(int argc, char** argv) {
         char recipes_root[ARK_PATH_MAX];
         char sources_root[ARK_PATH_MAX];
         char installed_root[ARK_PATH_MAX];
+        struct install_context context;
+        int* target_ok;
         int i;
         int failed;
 
@@ -344,19 +346,36 @@ int ark_command_install(int argc, char** argv) {
                 return 1;
         }
 
+        target_ok = calloc((size_t)argc, sizeof(*target_ok));
+
+        if (target_ok == NULL) {
+                fprintf(stderr, "ark: out of memory\n");
+
+                return 1;
+        }
+
+        for (i = 0; i < argc; i++) {
+                printf("==> Resolving dependencies for %s\n", argv[i]);
+        }
+
+        /*
+         * Resolve every requested target against one shared "already
+         * resolved" set, so a dependency common to two or more
+         * targets (e.g. `ark install foo bar` where both depend on
+         * libc-shim) is only found, built, and callback'd once
+         * instead of once per target that needs it.
+         */
+        context.sources_root   = sources_root;
+        context.installed_root = installed_root;
+
+        ark_resolve_dependencies_multi(argv, (size_t)argc, recipes_root,
+                                       install_dependency_callback, &context,
+                                       target_ok);
+
         failed = 0;
 
         for (i = 0; i < argc; i++) {
-                struct install_context context;
-
-                printf("==> Resolving dependencies for %s\n", argv[i]);
-
-                context.sources_root   = sources_root;
-                context.installed_root = installed_root;
-
-                if (ark_resolve_dependencies(argv[i], recipes_root,
-                                             install_dependency_callback,
-                                             &context) != 0) {
+                if (!target_ok[i]) {
                         fprintf(stderr, "ark: install failed: %s\n", argv[i]);
 
                         failed = 1;
@@ -370,6 +389,8 @@ int ark_command_install(int argc, char** argv) {
                                 argv[i]);
                 }
         }
+
+        free(target_ok);
 
         return failed ? 1 : 0;
 }
