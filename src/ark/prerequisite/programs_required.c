@@ -2,12 +2,13 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 
 static const char* required_programs[] = {"curl",
                                           "tar",// requires XZ support.
                                           "sha256sum", "git", "rm", NULL};
 
-int ark_check_programs_required(void) {
+bool ark_check_programs_required(void) {
         size_t i;
         char command[256];
 
@@ -19,9 +20,9 @@ int ark_check_programs_required(void) {
                         fprintf(stderr, "ark: required program not found: %s\n",
                                 required_programs[i]);
 
-                        return 1;
+                        return true;
                 }
         }
 
-        return 0;
+        return false;
 }

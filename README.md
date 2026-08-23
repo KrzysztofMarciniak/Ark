@@ -36,7 +36,7 @@ chmod +x ./build.sh
 
 # Set up the package repository
 mkdir -p ~/.ark/recipes
-git clone https://github.com/KrzysztofMarciniak/ark-recipes ~/.ark/recipes/main
+git clone https://github.com/KrzysztofMarciniak/ark-test-repository ~/.ark/recipes/
 
 # Fetch package sources
 ark fetch

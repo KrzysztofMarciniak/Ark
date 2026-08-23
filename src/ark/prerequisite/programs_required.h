@@ -1,6 +1,7 @@
 #ifndef ARK_PROGRAMS_REQUIRED_H
 #define ARK_PROGRAMS_REQUIRED_H
+#include <stdbool.h>
 
-int ark_check_programs_required(void);
+bool ark_check_programs_required(void);
 
 #endif

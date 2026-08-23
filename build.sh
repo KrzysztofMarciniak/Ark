@@ -13,8 +13,7 @@ build() {
     "$CC" $CFLAGS \
         -I"$ROOT/src" \
         "$ROOT/src/command_logic/command_logic.c" \
-        "$ROOT/src/ark/prerequisite/ark_exists.c" \
-        "$ROOT/src/ark/prerequisite/recipes_exists.c" \
+        "$ROOT/src/ark/prerequisite/ark_directories_exist.c" \
         "$ROOT/src/ark/prerequisite/programs_required.c" \
         "$ROOT/src/ark/package_handling/package_handling.c" \
         "$ROOT/src/ark/dependency_handling/dependency_handling.c" \

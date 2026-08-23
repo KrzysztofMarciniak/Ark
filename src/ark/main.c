@@ -1,19 +1,17 @@
 #include <stdio.h>
 
 #include "../command_logic/command_logic.h"
-#include "prerequisite/ark_exists.h"
+#include "prerequisite/ark_directories_exist.h"
 #include "prerequisite/programs_required.h"
-#include "prerequisite/recipes_exists.h"
+#include <stdbool.h>
 
 int main(int argc, char** argv) {
         struct ark_command_registry registry;
         int result;
 
-        if (ark_check_exists() != 0) return 1;
+        if (ark_check_directory_existance() != false) return true;
 
-        if (ark_check_recipes_exists() != 0) return 1;
-
-        if (ark_check_programs_required() != 0) return 1;
+        if (ark_check_programs_required() != false) return true;
 
         ark_command_registry_init(&registry);
 
