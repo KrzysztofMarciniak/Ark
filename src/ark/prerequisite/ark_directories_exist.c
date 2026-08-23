@@ -8,7 +8,7 @@
 #include <sys/types.h>
 #include <stdbool.h>
 
-static const char* directories_needed[] = {".ark",".ark/bin", ".ark/recipes", NULL};
+static const char* directories_needed[] = {".ark",".ark/bin", ".ark/recipes", ".ark/recipes/cache", NULL};
 
 static int ensure_directories(const char* path) {
         struct stat st;

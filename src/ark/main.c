@@ -3,6 +3,7 @@
 #include "../command_logic/command_logic.h"
 #include "prerequisite/ark_directories_exist.h"
 #include "prerequisite/programs_required.h"
+#include "prerequisite/ark_repo_exists.h"
 #include <stdbool.h>
 
 int main(int argc, char** argv) {
@@ -10,6 +11,15 @@ int main(int argc, char** argv) {
         int result;
 
         if (ark_check_directory_existance() != false) return true;
+	
+	if (ark_check_repo() != false){
+		printf("\n");
+		printf("No repository found inside ~/.ark/recipes\n");
+		printf("Please check README.md");
+		printf("\n");
+	}
+
+return true;
 
         if (ark_check_programs_required() != false) return true;
 
