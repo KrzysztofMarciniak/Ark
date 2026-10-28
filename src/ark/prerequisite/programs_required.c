@@ -1,8 +1,8 @@
 #include "programs_required.h"
 
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdbool.h>
 
 static const char* required_programs[] = {"wget",
                                           "tar",// requires XZ support.

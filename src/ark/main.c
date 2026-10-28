@@ -1,10 +1,10 @@
+#include <stdbool.h>
 #include <stdio.h>
 
 #include "../command_logic/command_logic.h"
 #include "prerequisite/ark_directories_exist.h"
-#include "prerequisite/programs_required.h"
 #include "prerequisite/ark_repo_exists.h"
-#include <stdbool.h>
+#include "prerequisite/programs_required.h"
 
 int main(int argc, char** argv) {
         struct ark_command_registry registry;
@@ -13,7 +13,8 @@ int main(int argc, char** argv) {
         if (ark_check_directory_existance()) return 1;
 
         if (!ark_check_repo()) {
-                fprintf(stderr, "ark: no repository found inside ~/.ark/recipes\n");
+                fprintf(stderr,
+                        "ark: no repository found inside ~/.ark/recipes\n");
                 return 1;
         }
 

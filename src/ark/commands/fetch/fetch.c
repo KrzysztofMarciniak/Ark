@@ -724,11 +724,11 @@ static int fetch_package(const struct ark_package* package,
          * Download.
          */
         wget_argv[0] = "wget";
-         wget_argv[1] = "-q";
-         wget_argv[2] = "-O";
-         wget_argv[3] = download_path;
-         wget_argv[4] = (char*)package->source_url;
-         wget_argv[5] = NULL;
+        wget_argv[1] = "-q";
+        wget_argv[2] = "-O";
+        wget_argv[3] = download_path;
+        wget_argv[4] = (char*)package->source_url;
+        wget_argv[5] = NULL;
 
         result = run_command(wget_argv);
 

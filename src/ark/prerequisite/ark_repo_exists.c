@@ -26,8 +26,8 @@ static bool is_regular_file(const char* path) {
 static bool has_repo_marker(const char* path) {
         char marker_path[ARK_PATH_MAX];
 
-        if (snprintf(marker_path, sizeof(marker_path), "%s/.repo-root",
-                     path) >= (int)sizeof(marker_path))
+        if (snprintf(marker_path, sizeof(marker_path), "%s/.repo-root", path) >=
+            (int)sizeof(marker_path))
                 return false;
 
         return is_regular_file(marker_path);
@@ -55,13 +55,12 @@ bool ark_check_repo(void) {
 
         while ((entry = readdir(dir)) != NULL) {
                 if (strcmp(entry->d_name, ".") == 0 ||
-                    strcmp(entry->d_name, "..") == 0 ||
-                    entry->d_name[0] == '.')
+                    strcmp(entry->d_name, "..") == 0 || entry->d_name[0] == '.')
                         continue;
 
                 if (snprintf(entry_path, sizeof(entry_path), "%s/%s",
-                             recipes_path, entry->d_name) >=
-                    (int)sizeof(entry_path))
+                             recipes_path,
+                             entry->d_name) >= (int)sizeof(entry_path))
                         continue;
 
                 if (is_directory(entry_path) && has_repo_marker(entry_path)) {
