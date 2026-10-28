@@ -10,18 +10,14 @@ int main(int argc, char** argv) {
         struct ark_command_registry registry;
         int result;
 
-        if (ark_check_directory_existance() != false) return true;
-	
-	if (ark_check_repo() != false){
-		printf("\n");
-		printf("No repository found inside ~/.ark/recipes\n");
-		printf("Please check README.md");
-		printf("\n");
-	}
+        if (ark_check_directory_existance()) return 1;
 
-return true;
+        if (!ark_check_repo()) {
+                fprintf(stderr, "ark: no repository found inside ~/.ark/recipes\n");
+                return 1;
+        }
 
-        if (ark_check_programs_required() != false) return true;
+        if (ark_check_programs_required()) return 1;
 
         ark_command_registry_init(&registry);
 

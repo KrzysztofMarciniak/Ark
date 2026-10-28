@@ -36,7 +36,7 @@ chmod +x ./build.sh
 
 # Set up the package repository
 mkdir -p ~/.ark/recipes
-git clone https://github.com/KrzysztofMarciniak/ark-test-repository ~/.ark/recipes/
+git clone https://github.com/KrzysztofMarciniak/ark-test-repository ~/.ark/recipes/ark-test-repository
 
 # Fetch package sources
 ark fetch
@@ -130,7 +130,7 @@ Before doing anything, `ark` checks:
 
 - `~/.ark` exists
 - `~/.ark/recipes` exists
-- `curl`, `tar` (with XZ support), `sha256sum`, `git`, `rm` are on `PATH`
+- `wget`, `tar` (with XZ support), `sha256sum`, `rm` are on `PATH`
 
 Missing any of these, it refuses to run and says which one.
 
@@ -146,13 +146,26 @@ ark fetch
 export PATH="$HOME/.ark/bin:$PATH"
 ```
 
-`~/.ark/recipes/` can hold more than one recipe repo. Every directory
-directly under it is treated as its own repo:
+`~/.ark/recipes/` can contain one recipe repo directly, or multiple
+recipe repos as subdirectories. Ark recognizes a repo by an empty
+`.repo-root` marker file at its root; Git is not needed by Ark. For
+example, either of these layouts works:
+
+```
+~/.ark/recipes/
+├── .repo-root
+├── ark-hello-world/
+└── another-package/
+```
+
+or:
 
 ```
 ~/.ark/recipes/
 ├── ark-recipes/
+│   └── .repo-root
 └── some-other-repo/
+    └── .repo-root
 ```
 
 ### Commands
@@ -166,7 +179,7 @@ Prints the version.
 Scans every repo under `~/.ark/recipes/` and, for anything not already
 cached, downloads and verifies its source. Per package:
 
-1. `curl -L --fail` the archive to a temp location.
+1. `wget` the archive to a temp location.
 2. Check it against `ARK_SOURCE_SHA256` with `sha256sum -c`.
 3. Extract with `tar`, repackage the extracted tree as one canonical
    `sources.tar.xz`.
@@ -317,7 +330,7 @@ marker.
 `fetch.c` pulls `ARK_SOURCE_URL` and `ARK_SOURCE_SHA256` out of
 `recipe.sh` with a small line parser, without sourcing it (only
 `ARK_DEPENDS` gets read by sourcing, in `package_handling`). For anything
-not cached, it runs `curl` and `sha256sum` via `fork`/`execvp`, never
+not cached, it runs `wget` and `sha256sum` via `fork`/`execvp`, never
 through a shell, so nothing in a URL or path can be interpreted as shell
 syntax. Extracts the verified archive, repacks it as one canonical
 `sources.tar.xz` per package/version.

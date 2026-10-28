@@ -127,6 +127,41 @@ static int find_highest_version(const char* package_dir, char* version_out,
         return found ? 0 : -1;
 }
 
+static int has_repo_marker(const char* repo_path) {
+        char marker_path[ARK_PATH_MAX];
+
+        if (snprintf(marker_path, sizeof(marker_path), "%s/.repo-root",
+                     repo_path) >= (int)sizeof(marker_path))
+                return 0;
+
+        return ark_is_regular_file(marker_path);
+}
+
+static void consider_package_repo(const char* repo_path, const char* name,
+                                  int* found, char* best_version,
+                                  char* best_recipe_path) {
+        char package_dir[ARK_PATH_MAX];
+        char version[ARK_VERSION_MAX];
+
+        if (snprintf(package_dir, sizeof(package_dir), "%s/%s", repo_path,
+                     name) >= (int)sizeof(package_dir))
+                return;
+
+        if (!is_directory(package_dir)) return;
+
+        if (find_highest_version(package_dir, version, sizeof(version)) != 0)
+                return;
+
+        if (*found && version_compare(version, best_version) <= 0) return;
+
+        if (snprintf(best_recipe_path, ARK_PATH_MAX, "%s/%s/recipe.sh",
+                     package_dir, version) >= ARK_PATH_MAX)
+                return;
+
+        strcpy(best_version, version);
+        *found = 1;
+}
+
 /* ------------------------------------------------------------------------- */
 /* ARK_DEPENDS parsing                                                       */
 /* ------------------------------------------------------------------------- */
@@ -200,18 +235,10 @@ int ark_find_package(const char* recipes_root, const char* name,
         int found;
         char best_recipe_path[ARK_PATH_MAX];
         char best_version[ARK_VERSION_MAX];
+        char repo_path[ARK_PATH_MAX];
 
         if (strlen(name) >= sizeof(package->name)) {
                 fprintf(stderr, "ark: package name too long: %s\n", name);
-
-                return -1;
-        }
-
-        dir = opendir(recipes_root);
-
-        if (dir == NULL) {
-                fprintf(stderr, "ark: cannot open recipes root: %s\n",
-                        recipes_root);
 
                 return -1;
         }
@@ -220,46 +247,40 @@ int ark_find_package(const char* recipes_root, const char* name,
         best_version[0]     = '\0';
         best_recipe_path[0] = '\0';
 
-        while ((entry = readdir(dir)) != NULL) {
-                char repo_path[ARK_PATH_MAX];
-                char package_dir[ARK_PATH_MAX];
-                char version[ARK_VERSION_MAX];
+        if (has_repo_marker(recipes_root)) {
+                consider_package_repo(recipes_root, name, &found, best_version,
+                                      best_recipe_path);
+        } else {
+                dir = opendir(recipes_root);
 
-                if (strcmp(entry->d_name, ".") == 0 ||
-                    strcmp(entry->d_name, "..") == 0)
-                        continue;
+                if (dir == NULL) {
+                        fprintf(stderr, "ark: cannot open recipes root: %s\n",
+                                recipes_root);
 
-                if (snprintf(repo_path, sizeof(repo_path), "%s/%s",
-                             recipes_root,
-                             entry->d_name) >= (int)sizeof(repo_path))
-                        continue;
+                        return -1;
+                }
 
-                if (!is_directory(repo_path)) continue;
-
-                if (snprintf(package_dir, sizeof(package_dir), "%s/%s",
-                             repo_path, name) >= (int)sizeof(package_dir))
-                        continue;
-
-                if (!is_directory(package_dir)) continue;
-
-                version[0] = '\0';
-
-                if (find_highest_version(package_dir, version,
-                                         sizeof(version)) != 0)
-                        continue;
-
-                if (!found || version_compare(version, best_version) > 0) {
-                        if (snprintf(best_recipe_path, sizeof(best_recipe_path),
-                                     "%s/%s/recipe.sh", package_dir,
-                                     version) >= (int)sizeof(best_recipe_path))
+                while ((entry = readdir(dir)) != NULL) {
+                        if (strcmp(entry->d_name, ".") == 0 ||
+                            strcmp(entry->d_name, "..") == 0 ||
+                            entry->d_name[0] == '.')
                                 continue;
 
-                        strcpy(best_version, version);
-                        found = 1;
-                }
-        }
+                        if (snprintf(repo_path, sizeof(repo_path), "%s/%s",
+                                     recipes_root,
+                                     entry->d_name) >= (int)sizeof(repo_path))
+                                continue;
 
-        closedir(dir);
+                        if (!is_directory(repo_path) ||
+                            !has_repo_marker(repo_path))
+                                continue;
+
+                        consider_package_repo(repo_path, name, &found,
+                                              best_version, best_recipe_path);
+                }
+
+                closedir(dir);
+        }
 
         if (!found) return -1;
 

@@ -294,19 +294,28 @@ static int repo_list_add(struct ark_repo_list* list, const char* name,
 /*
  * .ark/recipes/
  *
- * Every directory immediately below this directory is a repository.
+ * A repository can be cloned here directly, or in a child directory.
  *
  * Example:
  *
  * .ark/recipes/
- * ├── ark-recipes/
- * └── another-repo/
+ * ├── .repo-root
+ * ├── package-one/
+ * └── package-two/
  */
 static int find_repositories(const char* recipes_directory,
                              struct ark_repo_list* repos) {
         DIR* dir;
         struct dirent* entry;
         char path[ARK_PATH_MAX];
+        char marker_path[ARK_PATH_MAX];
+
+        if (snprintf(marker_path, sizeof(marker_path), "%s/.repo-root",
+                     recipes_directory) >= (int)sizeof(marker_path))
+                return -1;
+
+        if (is_regular_file(marker_path))
+                return repo_list_add(repos, "recipes", recipes_directory);
 
         dir = opendir(recipes_directory);
 
@@ -326,6 +335,14 @@ static int find_repositories(const char* recipes_directory,
                 }
 
                 if (!is_directory(path)) continue;
+
+                if (snprintf(marker_path, sizeof(marker_path), "%s/.repo-root",
+                             path) >= (int)sizeof(marker_path)) {
+                        closedir(dir);
+                        return -1;
+                }
+
+                if (!is_regular_file(marker_path)) continue;
 
                 if (repo_list_add(repos, entry->d_name, path) != 0) {
                         closedir(dir);
@@ -628,7 +645,7 @@ static int fetch_package(const struct ark_package* package,
         char archive_path[ARK_PATH_MAX];
         char checksum_file[ARK_PATH_MAX];
         char expected_line[ARK_PATH_MAX];
-        char* curl_argv[9];
+        char* wget_argv[6];
         char* verify_argv[4];
         FILE* file;
         int result;
@@ -706,20 +723,17 @@ static int fetch_package(const struct ark_package* package,
         /*
          * Download.
          */
-        curl_argv[0] = "curl";
-        curl_argv[1] = "-L";
-        curl_argv[2] = "--fail";
-        curl_argv[3] = "--silent";
-        curl_argv[4] = "--show-error";
-        curl_argv[5] = "-o";
-        curl_argv[6] = download_path;
-        curl_argv[7] = (char*)package->source_url;
-        curl_argv[8] = NULL;
+        wget_argv[0] = "wget";
+         wget_argv[1] = "-q";
+         wget_argv[2] = "-O";
+         wget_argv[3] = download_path;
+         wget_argv[4] = (char*)package->source_url;
+         wget_argv[5] = NULL;
 
-        result = run_command(curl_argv);
+        result = run_command(wget_argv);
 
         if (result != 0) {
-                fprintf(stderr, "ark: curl failed\n");
+                fprintf(stderr, "ark: wget failed\n");
                 remove_directory(temporary_root);
                 return -1;
         }

@@ -4,9 +4,9 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-static const char* required_programs[] = {"curl",
+static const char* required_programs[] = {"wget",
                                           "tar",// requires XZ support.
-                                          "sha256sum", "git", "rm", NULL};
+                                          "sha256sum", NULL};
 
 bool ark_check_programs_required(void) {
         size_t i;
